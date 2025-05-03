@@ -1,0 +1,69 @@
+_schema-version: 3.3.0
+ID: CapLlmPlugin
+version: 1.0.0
+description: "A simple CAP project."
+parameters:
+  enable-parallel-deployments: true
+build-parameters:
+  before-all:
+    - builder: custom
+      commands:
+        - npm ci
+        - npx cds build --production
+modules:
+  - name: CapLlmPlugin-srv
+    type: nodejs
+    path: gen/srv
+    parameters:
+      instances: 1
+      buildpack: nodejs_buildpack
+    build-parameters:
+      builder: npm-ci
+    provides:
+      - name: srv-api # required by consumers of CAP services (e.g. approuter)
+        properties:
+          srv-url: ${default-url}
+    requires:
+      - name: CapLlmPlugin-destination
+      # - name: CapLlmPlugin-db  # HANA DB Referenz auskommentiert
+
+  - name: CapLlmPlugin
+    type: approuter.nodejs
+    path: app/router
+    parameters:
+      keep-existing-routes: true
+      disk-quota: 256M
+      memory: 256M
+    requires:
+      - name: srv-api
+        group: destinations
+        properties:
+          name: srv-api # must be used in xs-app.json as well
+          url: ~{srv-url}
+          forwardAuthToken: true
+      - name: CapLlmPlugin-destination
+    provides:
+      - name: app-api
+        properties:
+          app-protocol: ${protocol}
+          app-uri: ${default-uri}
+
+  # - name: CapLlmPlugin-db-deployer  # HANA DB Deployer Modul auskommentiert
+  #   type: hdb
+  #   path: gen/db
+  #   parameters:
+  #     buildpack: nodejs_buildpack
+  #   requires:
+  #     - name: CapLlmPlugin-db
+
+resources:
+  - name: CapLlmPlugin-destination
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: destination
+      service-plan: lite
+  # - name: CapLlmPlugin-db  # HANA DB Resource auskommentiert
+  #   type: com.sap.xs.hdi-container
+  #   parameters:
+  #     service: hana
+  #     service-plan: hdi-shared
